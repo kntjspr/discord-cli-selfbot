@@ -1,0 +1,11 @@
+.env
+.venv/
+__pycache__/
+*.egg-info/
+build/
+dist/
+.dcli-state.json
+.dcli-state.json.tmp
+.dcli-failed-deliveries.jsonl
+attachments/
+.pytest_cache/
