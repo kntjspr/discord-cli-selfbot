@@ -75,6 +75,27 @@ if the webhook is down, failed deliveries get buffered to `.dcli-failed-deliveri
 --state-file PATH         # override .dcli-state.json
 ```
 
+## openclaw bridge
+
+a ready-made integration lives in `examples/openclaw_bridge.py`. it receives dcli webhooks and pipes each create/update event into `openclaw agent --message ...`.
+
+```
+# terminal 1: bridge
+python examples/openclaw_bridge.py
+
+# terminal 2: dcli listening on a channel, posting to the bridge
+dcli listen 1421689373786898543
+```
+
+env knobs for the bridge:
+
+```
+BRIDGE_PORT=8787          # default
+OPENCLAW_AGENT=main       # which agent to invoke
+OPENCLAW_DELIVER=1        # add --deliver so openclaw also sends a reply back
+OPENCLAW_BIN=openclaw     # binary path
+```
+
 ## smoke test
 
 terminal one — a webhook receiver that just prints what it gets:
