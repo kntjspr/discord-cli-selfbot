@@ -18,3 +18,29 @@ A small Python CLI that signs into a Discord user account, watches channels, and
     dcli dms
 
 See `docs/superpowers/specs/2026-05-19-discord-cli-selfbot-design.md` for the full design.
+
+## Smoke test
+
+In one terminal, run a trivial webhook receiver:
+
+```
+python -c "
+from http.server import BaseHTTPRequestHandler, HTTPServer
+class H(BaseHTTPRequestHandler):
+    def do_POST(self):
+        n = int(self.headers.get('content-length', 0))
+        print(self.rfile.read(n).decode())
+        self.send_response(204); self.end_headers()
+HTTPServer(('127.0.0.1', 8787), H).serve_forever()
+"
+```
+
+In another:
+
+```
+dcli channels                                    # find a channel id
+dcli fetch <channel_id> --limit 5                # sanity check
+dcli listen <channel_id>                         # post a message in Discord, watch it print
+```
+
+Post a message, edit it, delete it — each should produce a `message.create`, `message.update`, then `message.delete` JSON line on the receiver's stdout. Attach an image and `attachments/<msg_id>/<filename>` appears locally; the payload's `local_path` points at it.
