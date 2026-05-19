@@ -1,27 +1,83 @@
-# dcli — Discord CLI Selfbot
+# dcli
 
-A small Python CLI that signs into a Discord user account, watches channels, and forwards every new/edited/deleted message (plus downloaded image attachments) to a local HTTP webhook. Designed to notify `claude code` / `openclaw` / any local listener about Discord activity.
+a tiny python cli that signs into discord as a user, watches channels, and POSTs every new/edited/deleted message (plus downloaded image attachments) to a local webhook.
 
-> **Warning:** Discord's Terms of Service prohibit self-bots. Use at your own risk — your account can be flagged or banned.
+useful when you want some other process to react to discord activity. point the webhook at whatever you want — a bot, a script, an editor, doesn't matter.
 
-## Install
+> selfbots violate discord ToS. your account can get banned. your call.
 
-    pip install -e ".[dev]"
-    cp .env.example .env  # then fill in DISCORD_TOKEN and WEBHOOK_URL
+## install
 
-## Commands
+```
+pip install -e ".[dev]"
+cp .env.example .env   # fill in DISCORD_TOKEN and WEBHOOK_URL
+```
 
-    dcli listen <channel_id> [<channel_id> ...]
-    dcli fetch <channel_id> [--limit 50] [--json]
-    dcli send <channel_id> <message>
-    dcli channels [--guild GUILD_ID]
-    dcli dms
+grab your token from the discord web client: devtools → network → any request → `Authorization` header.
 
-See `docs/superpowers/specs/2026-05-19-discord-cli-selfbot-design.md` for the full design.
+## commands
 
-## Smoke test
+```
+dcli listen <channel_id> [<channel_id> ...]   # poll loop, posts events to webhook
+dcli fetch  <channel_id> [--limit 50] [--json]
+dcli send   <channel_id> <message>             # use '-' to read stdin
+dcli channels [--guild GUILD_ID]               # list guilds + text channels
+dcli dms                                       # list active DM channels
+```
 
-In one terminal, run a trivial webhook receiver:
+`listen` keeps a rolling window of recent message ids per channel in `.dcli-state.json` and diffs each poll cycle. detects:
+
+* `message.create` — new message
+* `message.update` — content changed
+* `message.delete` — gone, with a single confirm-fetch on ambiguous cases
+
+attachments get downloaded to `./attachments/{message_id}/{filename}`. payload includes both the absolute local path and the original cdn url.
+
+## webhook payload
+
+```json
+{
+  "event": "message.create",
+  "channel_id": "1421689373786898543",
+  "guild_id": null,
+  "message": {
+    "id": "...",
+    "author": {"id": "...", "username": "...", "global_name": "..."},
+    "content": "...",
+    "timestamp": "2026-05-19T...",
+    "edited_timestamp": null,
+    "referenced_message_id": null
+  },
+  "attachments": [
+    {
+      "filename": "screenshot.png",
+      "url": "https://cdn.discordapp.com/...",
+      "local_path": "/abs/path/attachments/.../screenshot.png",
+      "content_type": "image/png",
+      "size": 12345
+    }
+  ]
+}
+```
+
+`message.update` is identical shape with the new content.
+`message.delete` is `{event, channel_id, message_id, last_known_content}`.
+
+if the webhook is down, failed deliveries get buffered to `.dcli-failed-deliveries.jsonl` so nothing is silently dropped.
+
+## flags worth knowing
+
+```
+--interval 3              # poll cadence (seconds)
+--window 50               # rolling window per channel
+--no-download             # skip attachment download, url only
+--webhook URL             # override WEBHOOK_URL env
+--state-file PATH         # override .dcli-state.json
+```
+
+## smoke test
+
+terminal one — a webhook receiver that just prints what it gets:
 
 ```
 python -c "
@@ -35,12 +91,20 @@ HTTPServer(('127.0.0.1', 8787), H).serve_forever()
 "
 ```
 
-In another:
+terminal two:
 
 ```
-dcli channels                                    # find a channel id
-dcli fetch <channel_id> --limit 5                # sanity check
-dcli listen <channel_id>                         # post a message in Discord, watch it print
+dcli channels                       # find a channel id
+dcli fetch <channel_id> --limit 5   # confirm token works
+dcli listen <channel_id>            # post in discord, watch it appear
 ```
 
-Post a message, edit it, delete it — each should produce a `message.create`, `message.update`, then `message.delete` JSON line on the receiver's stdout. Attach an image and `attachments/<msg_id>/<filename>` appears locally; the payload's `local_path` points at it.
+post a message, edit it, delete it. drop an image in. each action shows up as a json line on the receiver.
+
+## tests
+
+```
+pytest -q
+```
+
+35 unit tests, no live discord calls. the diff algorithm is a pure function (`dcli.listener.diff_window`) so the trickiest logic gets hammered with synthetic inputs.

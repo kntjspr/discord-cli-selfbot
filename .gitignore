@@ -9,3 +9,4 @@ dist/
 .dcli-failed-deliveries.jsonl
 attachments/
 .pytest_cache/
+.claude/
